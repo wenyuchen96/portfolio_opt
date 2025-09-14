@@ -23,7 +23,7 @@ def _pair_exp_cov(X: pd.Series, Y: pd.Series, span: int =180):
     span: the span of the exponential weighting function, default to 180
     """
 
-    covariation =  (X - Y.mean()) * (Y - Y.mean())
+    covariation =  (X - X.mean()) * (Y - Y.mean())
     #exponentially weight the covariation and take the mean
     if span < 10:
         warnings.warn("it's recommended to use a higher span, e.g. 30 days")
@@ -66,6 +66,33 @@ def fix_nonpositive_semidefinite(matrix: np.ndarray, fix_method: str = "spectral
         return pd.DataFrame(fixed_matrix, index=matrix.index, columns=matrix.columns)
     else:
         return fixed_matrix
+
+def cov_to_corr(cov_matrix: pd.DataFrame):
+    """
+    Convert a covariance matrix to a correlation matrix.
+    
+    cov_matrix: covariance matrix
+    """
+    if not isinstance(cov_matrix, pd.DataFrame):
+        warnings.warn("cov_matrix is not in a dataframe", RuntimeWarning)
+        cov_matrix = pd.DataFrame(cov_matrix)
+    
+    Dinv = np.diag(1 / np.sqrt(np.diag(cov_matrix)))
+    corr = np.dot(Dinv, np.dot(cov_matrix, Dinv))
+    return pd.DataFrame(corr, index=cov_matrix.index, columns=cov_matrix.index)
+
+def corr_to_cov(corr_matrix: pd.DataFrame, stdevs: np.ndarray):
+    """
+    Convert a correlation matrix to a covariance matrix.
+    
+    corr_matrix: correlation matrix
+    stdevs: standard deviations of the assets
+    """
+    if not isinstance(corr_matrix, pd.DataFrame):
+        warnings.warn("corr_matrix is not in a dataframe", RuntimeWarning)
+        corr_matrix = pd.DataFrame(corr_matrix)
+
+    return corr_matrix * np.outers(stdevs, stdevs)
 
 # Main functions
 def risk_matrix(prices: pd.DataFrame, method="sample_cov", **kwargs):
@@ -172,7 +199,7 @@ def exp_cov(
     log_returns: whether to calculate log returns; default to False
     """
 
-    if not isinstance(prices, pd.Dataframe):
+    if not isinstance(prices, pd.DataFrame):
         warnings.warn("data is not in a dataframe", RuntimeWarning)
         prices = pd.DataFrame(prices)
     assets = prices.columns
@@ -189,4 +216,4 @@ def exp_cov(
             S[i, j] = S[j, i] = _pair_exp_cov(returns.iloc[:, i], returns.iloc[:, j], span)
     cov = pd.DataFrame(S*frequency, index=assets, columns=assets)
 
-    return fix_nonpositive_semidefinite(cov * frequency, kwargs.get("fix_method", "spectral"))
+    return fix_nonpositive_semidefinite(cov, kwargs.get("fix_method", "spectral"))
