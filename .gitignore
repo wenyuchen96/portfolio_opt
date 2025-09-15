@@ -1,0 +1,11 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.pyc
+
+# Temporary test/scratch files
+# This will ignore the test.py file in the root directory
+test.py
+
+# Virtual environment
+venv/
+.venv/
