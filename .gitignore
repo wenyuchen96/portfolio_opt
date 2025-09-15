@@ -5,6 +5,7 @@ __pycache__/
 # Temporary test/scratch files
 # This will ignore the test.py file in the root directory
 test.py
+test.ipynb
 
 # Virtual environment
 venv/
