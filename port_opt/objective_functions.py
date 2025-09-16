@@ -12,7 +12,6 @@ The objective_functions.py houses optimization objectives, which includes the ac
 
 import cvxpy as cp
 import numpy as np
-import pandas as pd
 
 def _objective_value(w: np.ndarray | cp.Variable, obj: cp.Expression):
     """
