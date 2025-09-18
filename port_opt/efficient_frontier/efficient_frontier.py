@@ -4,7 +4,7 @@ import cvxpy as cp
 import numpy as np
 import pandas as pd
 
-from .. import base_optimizer, exceptions, objective_functions
+from port_opt import base_optimizer, exceptions, objective_functions
 
 class EfficientFrontier(base_optimizer.BaseConvexOptimizer):
     """
@@ -111,7 +111,7 @@ class EfficientFrontier(base_optimizer.BaseConvexOptimizer):
         returns_df = pd.DataFrame(returns)
         if returns_df.isnull().values.any():
             warnings.warn(
-                "Removing NaNs from returns"
+                "Removing NaNs from returns",
                 UserWarning,
             )
             returns_df = returns_df.dropna(axis=0,how="any")
@@ -175,50 +175,49 @@ class EfficientFrontier(base_optimizer.BaseConvexOptimizer):
         
     def max_sharpe(self, risk_free_rate: float = 0.0):
         """
-        Maximize Sharpe ratio
-        This is the mean-variance efficient portfolio where the capital market line is tangent to the efficient frontier.
+        Maximize the Sharpe ratio via the standard convex reformulation:
+        minimize  x^T Σ x
+        s.t.      (μ - r_f)^T x = 1
+                    sum(x) = k,  k >= 0
+                    bounds:  lower*k ≤ x ≤ upper*k
+        then w = x / k
         """
 
-        if not isinstance(risk_free_rate, (float, int)):
-            raise ValueError("risk_free_rate must be a float or int")
-        
+        if not isinstance(risk_free_rate, (int, float)):
+            raise ValueError("risk_free_rate should be numeric")
         if max(self.expected_returns) <= risk_free_rate:
-            raise ValueError(
-                "at least one of the assets must have an expected return exceeding the risk-free rate"
-            )
-        
+            raise ValueError("at least one asset must have expected return > risk_free_rate")
+
         self._risk_free_rate = risk_free_rate
-        
-        self._objective = cp.quad_form(self._w, self.cov_matrix, assume_PSD=True)
+
+        # Scaled variables (avoid reusing self._w for the transformed problem)
+        x = cp.Variable(self.n_assets)
         k = cp.Variable()
 
-        if len(self._additional_objectives) > 0:
-            warnings.warn("max_sharpe transforms the optimization problem so addiitonal objectives may not work as expected")
-        for obj in self._additional_objectives:
-            self._objective += obj
+        mu_excess = self.expected_returns - risk_free_rate
 
-        new_constraints = []
-        for constr in self._constraints:
-            if isinstance(constr, cp.constraints.nonpos.Inequality):
-                if isinstance(constr.args[0], cp.expressions.constants.constant.Constant):
-                    new_constraints.append(constr.args[1] >= constr.args[0] * k)
-                else:
-                    new_constraints.append(constr.args[0] <= constr.args[1] * k)
-            elif isinstance(constr, cp.contraints.zero.Equality):
-                new_constraints.append(constr.args[0] == constr.args[1] * k)
-            else:
-                raise TypeError("Please check that your constraints are in a suitable format")
-        
-        # Transformed max_sharpe convex problem:
-        self._constraints = [
-            (self.expected_returns - risk_free_rate).T @ self._w == 1,
-            cp.sum(self._w) == k,
+        objective = cp.Minimize(cp.quad_form(x, self.cov_matrix, assume_PSD=True))
+
+        constraints = [
+            mu_excess.T @ x == 1,
+            cp.sum(x) == k,
             k >= 0,
-        ] + new_constraints
+        ]
 
-        self._solve_cvxpy_opt_problem()
-        # Inverse-transform
-        self.weights = (self._w.value / k.value).round(16) + 0.0
+        # Explicitly re-add bounds (no introspection)
+        if self._lower_bounds is not None:
+            constraints.append(x >= self._lower_bounds * k)
+        if self._upper_bounds is not None:
+            constraints.append(x <= self._upper_bounds * k)
+
+        prob = cp.Problem(objective, constraints)
+        prob.solve(solver=self._solver, verbose=self._verbose, **self._solver_options)
+
+        if prob.status not in {"optimal", "optimal_inaccurate"}:
+            raise exceptions.OptimizationError(f"Solver status: {prob.status}")
+
+        # Inverse transform to get weights that sum to 1
+        self.weights = (x.value / k.value).round(16) + 0.0
         return self._make_output_weights()
 
 

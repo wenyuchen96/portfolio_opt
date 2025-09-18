@@ -18,7 +18,7 @@ def _is_positive_semidefinite(matrix: np.ndarray):
     
 def _pair_exp_cov(X: pd.Series, Y: pd.Series, span: int =180):
     """
-    Calculate the exponential covariance between two timeseries of asset returns.
+    Calculate the exponential covariance between two time series of asset returns.
     X, Y: time series of asset returns
     span: the span of the exponential weighting function, default to 180
     """
